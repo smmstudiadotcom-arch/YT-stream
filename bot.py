@@ -21,7 +21,7 @@ YT_CHANNEL_HANDLE  = "ArmeniaTodayTV"
 YT_SERVICE         = 1532
 YT_QTY_MIN         = 500
 YT_QTY_MAX         = 1000
-YT_CHECK_INTERVAL  = 300  # каждые 5 минут
+YT_CHECK_INTERVAL  = 60  # каждую минуту
 
 STATE_FILE = "last_yt_stream.txt"
 
