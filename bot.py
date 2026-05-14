@@ -23,22 +23,24 @@ YT_QTY_MIN         = 500
 YT_QTY_MAX         = 1000
 YT_CHECK_INTERVAL  = 60  # каждую минуту
 
-STATE_FILE = "last_yt_stream.txt"
+STATE_FILE = "processed_streams.txt"
 
 def log(msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{ts}] [YT-Streams] {msg}", flush=True)
 
-def load_state():
+def load_processed():
+    """Загрузить все обработанные ID"""
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, "r") as f:
-            val = f.read().strip()
-            return val if val else None
-    return None
+            return set(line.strip() for line in f if line.strip())
+    return set()
 
-def save_state(value):
+def save_processed(ids):
+    """Сохранить все обработанные ID"""
     with open(STATE_FILE, "w") as f:
-        f.write(str(value))
+        for vid in ids:
+            f.write(f"{vid}\n")
 
 def check_balance():
     try:
@@ -172,14 +174,17 @@ def main():
             log("⏳ Повтор через 60 сек...")
             time.sleep(60)
     
-    last_id = load_state()
+    processed = load_processed()
+    log(f"📋 Загружено обработанных стримов: {len(processed)}")
     
-    if not last_id:
+    # Первый запуск — запоминаем все существующие стримы, не крутим
+    if not processed:
         streams = get_streams(channel_id)
         if streams:
-            last_id = streams[0]["id"]
-            save_state(last_id)
-            log(f"📌 Последний стрим: {last_id}. Жду новые...")
+            for s in streams:
+                processed.add(s["id"])
+            save_processed(processed)
+            log(f"📌 Запомнено {len(streams)} существующих стримов. Жду новые...")
         else:
             log("⚠️  Стримов на канале не найдено")
     
@@ -190,24 +195,19 @@ def main():
             if not streams:
                 continue
             
-            new_streams = []
-            for stream in streams:
-                if stream["id"] != last_id:
-                    new_streams.append(stream)
-                else:
-                    break
+            # Берём только те которых нет в processed
+            new_streams = [s for s in streams if s["id"] not in processed]
             
             if new_streams:
                 log(f"🆕 Новых стримов: {len(new_streams)}")
-                latest_id = streams[0]["id"]
                 for stream in new_streams:
                     log(f"🆕 {stream['url']}")
                     create_jap_order(stream["url"])
+                    processed.add(stream["id"])
+                    save_processed(processed)  # сохраняем после каждого
                     time.sleep(2)
-                save_state(latest_id)
-                last_id = latest_id
             else:
-                log(f"🔍 Нет новых стримов (последний: {last_id})")
+                log(f"🔍 Нет новых стримов")
         except Exception as e:
             log(f"❌ Ошибка: {e}")
 
