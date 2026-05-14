@@ -18,10 +18,17 @@ JAP_API_URL = "https://justanotherpanel.com/api/v2"
 #  YOUTUBE
 # ══════════════════════════════════════
 YT_CHANNEL_HANDLE  = "ArmeniaTodayTV"
-YT_SERVICE         = 1532
-YT_QTY_MIN         = 500
-YT_QTY_MAX         = 1000
 YT_CHECK_INTERVAL  = 60  # каждую минуту
+
+# Услуга 1: просмотры
+YT_SERVICE_1 = 1532
+YT_QTY_MIN_1 = 500
+YT_QTY_MAX_1 = 1000
+
+# Услуга 2 (новая)
+YT_SERVICE_2 = 2085
+YT_QTY_MIN_2 = 10
+YT_QTY_MAX_2 = 25
 
 STATE_FILE = "processed_streams.txt"
 
@@ -52,11 +59,11 @@ def check_balance():
     except Exception as e:
         log(f"❌ Ошибка баланса: {e}")
 
-def create_jap_order(link):
-    quantity = random.randint(YT_QTY_MIN, YT_QTY_MAX)
-    payload = {"key": JAP_API_KEY, "action": "add", "service": YT_SERVICE, "link": link, "quantity": quantity}
+def create_jap_order(link, service, qty_min, qty_max):
+    quantity = random.randint(qty_min, qty_max)
+    payload = {"key": JAP_API_KEY, "action": "add", "service": service, "link": link, "quantity": quantity}
     try:
-        log(f"📤 Заказ: service={YT_SERVICE}, qty={quantity}")
+        log(f"📤 Заказ: service={service}, qty={quantity}")
         resp = requests.post(JAP_API_URL, data=payload, timeout=15)
         log(f"📥 JAP: {resp.status_code} | {repr(resp.text[:150])}")
         if not resp.text.strip():
@@ -64,7 +71,7 @@ def create_jap_order(link):
             return
         data = resp.json()
         if "order" in data:
-            log(f"✅ Заказ! ID: {data['order']} | Кол-во: {quantity}")
+            log(f"✅ Заказ! ID: {data['order']} | Услуга: {service} | Кол-во: {quantity}")
         elif "error" in data:
             log(f"❌ JAP ошибка: {data['error']}")
     except Exception as e:
@@ -162,7 +169,9 @@ def get_streams(channel_id):
 
 def main():
     log(f"🚀 YouTube Streams бот запущен!")
-    log(f"📺 Канал: @{YT_CHANNEL_HANDLE} | Услуга: {YT_SERVICE} | {YT_QTY_MIN}-{YT_QTY_MAX}")
+    log(f"📺 Канал: @{YT_CHANNEL_HANDLE}")
+    log(f"   Услуга 1: {YT_SERVICE_1} | {YT_QTY_MIN_1}-{YT_QTY_MAX_1}")
+    log(f"   Услуга 2: {YT_SERVICE_2} | {YT_QTY_MIN_2}-{YT_QTY_MAX_2}")
     log(f"⏰ Интервал проверки: {YT_CHECK_INTERVAL} сек")
     check_balance()
     
@@ -202,7 +211,11 @@ def main():
                 log(f"🆕 Новых стримов: {len(new_streams)}")
                 for stream in new_streams:
                     log(f"🆕 {stream['url']}")
-                    create_jap_order(stream["url"])
+                    # Заказ 1: просмотры
+                    create_jap_order(stream["url"], YT_SERVICE_1, YT_QTY_MIN_1, YT_QTY_MAX_1)
+                    time.sleep(2)
+                    # Заказ 2
+                    create_jap_order(stream["url"], YT_SERVICE_2, YT_QTY_MIN_2, YT_QTY_MAX_2)
                     processed.add(stream["id"])
                     save_processed(processed)  # сохраняем после каждого
                     time.sleep(2)
