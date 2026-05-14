@@ -94,27 +94,41 @@ def get_channel_id():
 def get_streams(channel_id):
     """Получить последние стримы из RSS"""
     try:
-        # UULV + channel_id (без 'UC') = playlist всех Live Streams
-        playlist_id = "UULV" + channel_id[2:]
-        url = f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
+        # Пробуем разные playlist ID варианты
+        # UULV - все Live Streams
+        # UULF - все видео (long form)
+        # UU - все видео и стримы
+        suffix = channel_id[2:]  # убираем 'UC'
         
-        headers = {"User-Agent": "Mozilla/5.0"}
-        resp = requests.get(url, headers=headers, timeout=15)
-        log(f"📥 RSS: {resp.status_code} | {len(resp.text)} символов")
+        playlist_variants = [
+            ("UULV" + suffix, "Live streams"),
+            ("UULF" + suffix, "Long form videos"),
+            ("UU"   + suffix, "All uploads"),
+        ]
         
-        if resp.status_code != 200:
-            return []
+        for playlist_id, label in playlist_variants:
+            url = f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            resp = requests.get(url, headers=headers, timeout=15)
+            log(f"📥 [{label}] {playlist_id}: {resp.status_code} | {len(resp.text)} символов")
+            
+            if resp.status_code != 200:
+                continue
+            
+            streams = []
+            for match in re.finditer(r'<yt:videoId>([A-Za-z0-9_-]{11})</yt:videoId>', resp.text):
+                video_id = match.group(1)
+                streams.append({
+                    "id": video_id,
+                    "url": f"https://www.youtube.com/watch?v={video_id}"
+                })
+            
+            if streams:
+                log(f"📊 [{label}] Найдено: {len(streams)}")
+                return streams
         
-        streams = []
-        for match in re.finditer(r'<yt:videoId>([A-Za-z0-9_-]{11})</yt:videoId>', resp.text):
-            video_id = match.group(1)
-            streams.append({
-                "id": video_id,
-                "url": f"https://www.youtube.com/watch?v={video_id}"
-            })
-        
-        log(f"📊 Найдено стримов: {len(streams)}")
-        return streams
+        log(f"⚠️  Ни один playlist не вернул видео")
+        return []
     except Exception as e:
         log(f"❌ Ошибка: {e}")
         return []
