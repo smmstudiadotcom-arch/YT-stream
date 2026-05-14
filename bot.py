@@ -92,14 +92,11 @@ def get_channel_id():
         return None
 
 def get_streams(channel_id):
-    """Получить последние стримы из RSS"""
+    """Получить последние стримы — пробуем RSS, потом парсим страницу канала"""
     try:
-        # Пробуем разные playlist ID варианты
-        # UULV - все Live Streams
-        # UULF - все видео (long form)
-        # UU - все видео и стримы
-        suffix = channel_id[2:]  # убираем 'UC'
+        suffix = channel_id[2:]
         
+        # Попытка 1-3: RSS playlists
         playlist_variants = [
             ("UULV" + suffix, "Live streams"),
             ("UULF" + suffix, "Long form videos"),
@@ -109,25 +106,53 @@ def get_streams(channel_id):
         for playlist_id, label in playlist_variants:
             url = f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
             headers = {"User-Agent": "Mozilla/5.0"}
-            resp = requests.get(url, headers=headers, timeout=15)
-            log(f"📥 [{label}] {playlist_id}: {resp.status_code} | {len(resp.text)} символов")
-            
-            if resp.status_code != 200:
-                continue
-            
-            streams = []
-            for match in re.finditer(r'<yt:videoId>([A-Za-z0-9_-]{11})</yt:videoId>', resp.text):
-                video_id = match.group(1)
-                streams.append({
-                    "id": video_id,
-                    "url": f"https://www.youtube.com/watch?v={video_id}"
-                })
-            
-            if streams:
-                log(f"📊 [{label}] Найдено: {len(streams)}")
-                return streams
+            try:
+                resp = requests.get(url, headers=headers, timeout=15)
+                log(f"📥 [{label}] {playlist_id}: {resp.status_code} | {len(resp.text)} символов")
+                
+                if resp.status_code == 200:
+                    streams = []
+                    for match in re.finditer(r'<yt:videoId>([A-Za-z0-9_-]{11})</yt:videoId>', resp.text):
+                        video_id = match.group(1)
+                        streams.append({
+                            "id": video_id,
+                            "url": f"https://www.youtube.com/watch?v={video_id}"
+                        })
+                    if streams:
+                        log(f"📊 [{label}] Найдено: {len(streams)}")
+                        return streams
+            except Exception as e:
+                log(f"⚠️  [{label}] {e}")
         
-        log(f"⚠️  Ни один playlist не вернул видео")
+        # Попытка 4: парсим страницу /streams напрямую
+        log(f"🔄 RSS не работает, парсю страницу /streams...")
+        url = f"https://www.youtube.com/@{YT_CHANNEL_HANDLE}/streams"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+        }
+        resp = requests.get(url, headers=headers, timeout=20)
+        log(f"📥 /streams: {resp.status_code} | {len(resp.text)} символов")
+        
+        if resp.status_code == 200:
+            # Ищем videoId в HTML страницы
+            video_ids = re.findall(r'"videoId":"([A-Za-z0-9_-]{11})"', resp.text)
+            # Уникальные с сохранением порядка
+            seen = set()
+            unique_ids = []
+            for vid in video_ids:
+                if vid not in seen:
+                    seen.add(vid)
+                    unique_ids.append(vid)
+            
+            streams = [
+                {"id": vid, "url": f"https://www.youtube.com/watch?v={vid}"}
+                for vid in unique_ids[:20]  # берём первые 20
+            ]
+            log(f"📊 [/streams] Найдено: {len(streams)}")
+            return streams
+        
+        log(f"⚠️  Все способы не сработали")
         return []
     except Exception as e:
         log(f"❌ Ошибка: {e}")
